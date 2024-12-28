@@ -1,0 +1,1404 @@
+---
+title: "Proyecto_Final_Juan_Antonio_Terrones_Morones"
+author: "Juan Antonio Terrones Morones"
+date: '2024-12-17'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### *Proyecto final. Juan Antonio Terrones Morones. Caso de la Nutrición y Diabetes.*
+
+#### *1. Descripción de la base de datos*
+
+La siguiente base de datos lleva el nombre de "*Caso_Data_Nutricion*", la cual contiene 652 observaciones de invididuos que describen sus características y condición corporal (edad, altura, talla, sexo, peso, características corporales, etc.). La variable objetivo o dependiente de este caso es "*target*", la cual nos indica si la persona respectiva tiene **DIABETES, VALOR 1 O NO TIENE DIABETES, VALOR 0**. 
+
+Ahora se procede a obtener una descripción más detallada o numérica de la base de datos.
+
+```{r}
+
+# Fijación del directorio de trabajo----
+setwd("D:/Conferencias y cursos/Estadistica con R Studio")
+getwd()
+```
+
+```{r, warning=FALSE}
+library(readxl)
+```
+
+
+```{r}
+# Importación de los datos----
+nutricion <- read_excel("Caso_Data_Nutricion.xlsx")
+```
+
+```{r}
+# Visualizar los datos
+head(nutricion, 10)
+str(nutricion)
+```
+
+En el resultado anterior, vemos que las variables: *peso_kg, cadera, pliegue_cutaneo_BICEPS, TRICEPS, ESCAPULAR, SUPRAILIACO* se presentan como variables de carácteres, aunque estas son numéricas. Se procede a cambiarlas:
+
+```{r include=FALSE}
+i <- c(6, 10, 15, 16, 17, 18)
+nutricion[ , i] <- apply(nutricion[ , i], 2, 
+                         function(x) as.numeric(as.character(x)))
+
+```
+
+```{r}
+sapply(nutricion, class)
+```
+
+Como observamos, las variables que eran caracteres ahora son numéricas. Ahora se procede a observar los datos duplicados.
+
+```{r}
+sum(duplicated(nutricion$`N°`))
+```
+
+Ahora procedemos a revisar los valores NA's o vacíos.
+
+```{r, warning=FALSE}
+library(dplyr)
+```
+
+
+```{r}
+sum(is.na(nutricion))   # sumas de datos perdidos
+apply(is.na(nutricion), 2, mean) # % de datos perdidos por nvariable
+apply(is.na(nutricion), 2, sum)  # total de datos perdidos por variable
+```
+
+En este caso encontramos 155 NA's entre todas las columnas. Analizando el caso, tenemos las siguientes limitantes: Para las variables que tienen NA's y son cualitativas, como Sexo y clasif_anemiac, etc es dificil asignar un valor condicionado a información, la opción más general es rellenar el dato faltante con la moda, y en caso de las cuantitativas con la media. O en otro caso eliminar las observaciones.
+Para ver cuántas filas podemos perder si eliminamos los NA's podemos contar los renglones en los cuales se encuentra 1 NA:
+
+```{r}
+which(is.na(nutricion))
+dim(nutricion)
+```
+En este caso perderiamos 155 observaciones de 625, lo que podrían ser significativas. Por lo que analizamos la otra opción de rellenar los datos.
+
+```{r}
+table(nutricion$sexo)
+#--------
+table(nutricion$clasif_diagnos_talla_edad)
+table(nutricion$clasif_diagnos_IMC)
+table(nutricion$clasif_perimetro_abdominal)
+table(nutricion$clasif_anemia)
+
+```
+
+```{r}
+par(mfrow=c(1,1))
+barplot(table(nutricion$sexo), 
+                   ,col=c("lightblue", "pink"))
+
+barplot(table(nutricion$clasif_diagnos_talla_edad), 
+                   ,col=c("lightblue", "pink", "lightgreen", "orange"))
+
+barplot(table(nutricion$clasif_diagnos_IMC), 
+                   ,col=c("lightblue", "pink", "lightgreen"
+                          , "orange", "darkred"))
+
+barplot(table(nutricion$clasif_perimetro_abdominal), 
+                   ,col=c("lightblue", "pink"))
+
+barplot(table(nutricion$clasif_anemia), 
+                   ,col=c("lightblue", "pink", "lightgreen", "orange"))
+```
+Como observamos ya tenemos los valores más repetidos de cada una de las variables cualitativas. Ahora se procede a sustituir los valores de los NA's.
+
+```{r}
+#define function to calculate mode
+find_mode <- function(x) {
+  u <- unique(x)
+  tab <- tabulate(match(x, u))
+  u[tab == max(tab)]
+}
+
+```
+
+```{r}
+# Imputación de los valores faltantes por su promedio o moda.
+nutricion$sexo[is.na(nutricion$sexo)] <- find_mode(nutricion$sexo)
+
+nutricion$clasif_diagnos_talla_edad[is.na(nutricion$clasif_diagnos_talla_edad)] <- find_mode(nutricion$clasif_diagnos_talla_edad)
+
+nutricion$clasif_diagnos_IMC[is.na(nutricion$clasif_diagnos_IMC)] <- find_mode(nutricion$clasif_diagnos_IMC)
+
+nutricion$clasif_perimetro_abdominal[is.na(nutricion$clasif_perimetro_abdominal)] <- find_mode(nutricion$clasif_perimetro_abdominal)
+
+nutricion$clasif_anemia[is.na(nutricion$clasif_anemia)] <- find_mode(nutricion$clasif_anemia)
+```
+
+
+```{r}
+##------ imputacion variables numéricas
+library(naniar)
+
+nutricion_1 <- nutricion %>% 
+  impute_mean_if(is.numeric)
+
+```
+
+
+```{r}
+sum(is.na(nutricion_1))   # sumas de datos perdidos
+apply(is.na(nutricion_1), 2, sum)  # total de datos perdidos por variable
+sapply(nutricion_1, class)
+```
+
+Con esto hemos reemplazado los datos faltantes, nuestra base de datos esta lista para seguir con nuestro análisis.
+
+
+
+#### *Estadística descriptiva*
+
+##### **Medidas de tendencia central de variables cuantitativas**
+
+Ahora se calcula la media, mediana, moda y otras, solo para las variables de tipo cuantitativo. Las cuales son las siguientes:
+
+- talla, edad, peso, circunferencia del cuello, de la cintura, cadera, indice de cintura-cadera, indice de cintura-estatura, por_grasa_corporal, masa_corporal_magra_kg, pliegue_cutaneo_BICEPS, pliegue_cutaneo_TRICEPS, pliegue_cutaneo_ESCAPULAR, pliegue_cutaneo_SUPRAILIACO e imc.
+
+*Media*
+
+La media de cada una de las variables tiene la siguiente interpretación (tomando como ejemplo la edad): De la población analizada, en la base de datos se tiene una edad promedio de 14.8 años (15 años), es decir, la mayoría de los individuos son jóvenes de 15 años.
+
+```{r}
+# Calcular media
+apply(nutricion_1[, 
+                c(4, 5, 6, 7, 8, 9,	10,	11,	12,	13,	14,	15,	16,	17,	18
+)],2, mean)
+```
+
+```{r}
+# Calcular media geométrica y armónica
+media.geometrica<-function(x, sin.na=FALSE){
+  
+  if (sin.na==TRUE){
+    return (exp(sum(log(x), na.rm = TRUE)/length(x)) )
+  }
+  else{
+    return (exp(sum(log(x))/length(x)) )
+  }
+} 
+
+apply(nutricion_1[, c(4, 5, 6, 7, 8, 9,	10,	11,	12,	13,	14,	15,	16,	17,	18)],
+      2, media.geometrica)
+```
+
+```{r}
+media.armonica<-function(x, sin.na=FALSE){
+  
+  if (sin.na==TRUE){
+    return ( round(1/mean(1/x, na.rm = TRUE), 2) )
+  }
+  else{
+    return ( round(1/mean(1/x), 2) )
+  }
+} 
+
+apply(nutricion_1[, c(4, 5, 6, 7, 8, 9,	10,	11,	12,	13,	14,	15,	16,	17,	18)],
+      2, media.armonica)
+```
+
+*Mediana*
+
+```{r}
+apply(nutricion_1[, c(4, 5, 6, 7, 8, 9,	10,	11,	12,	13,	14,	15,	16,	17,	18)],
+      2, median)
+
+apply(nutricion_1[, c(4, 5, 6, 7, 8, 9,	10,	11,	12,	13,	14,	15,	16,	17,	18)],
+      2, mean)
+```
+
+```{r, warning=FALSE}
+library(modeest)
+```
+
+```{r, warning=FALSE}
+apply(nutricion_1[, c(4, 5, 6, 7, 8, 9,	10,	11,	12,	13,	14,	15,	16,	17,	18)],
+      2, mlv)
+```
+
+De las medidas de tendencia central podemos concluir lo siguiente: Comparación entre la media y la mediana, son muy cercanas, por lo que esperamos que todas las variables tengan una distribución normal o cercana.
+
+##### Medidas de tendencia central de variables cualitativas.
+
+Para las variables cualitativas consideraremos las siguientes: Cada una de las variables las agregaremos con respecto al sexo o a la obesidad, talla, edad, peso, imc y cirunferencia de la cadera. 
+
+*Media*
+
+```{r}
+head(nutricion_1)
+```
+
+```{r}
+m1 <- nutricion_1 %>% 
+  select(sexo, talla) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(m=mean(talla, na.rm = TRUE))
+
+m2 <- nutricion_1 %>% 
+  select(sexo, edad) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(m=mean(edad, na.rm = TRUE))
+
+m3<- nutricion_1 %>% 
+  select(sexo, peso_kg) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(m=mean(peso_kg, na.rm = TRUE))
+
+m4 <- nutricion_1 %>% 
+  select(sexo, IMC) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(m=mean(IMC, na.rm = TRUE))
+
+m5 <- nutricion_1 %>% 
+  select(sexo, circun_cintura) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(m=mean(circun_cintura, na.rm = TRUE))
+
+m1 
+m2 
+m3 
+m4 
+m5  
+```
+Sobre las variables cualitativas, tenemos lo siguiente sobre la media con respecto al sexo: 1) Los hombres tienen una talla y un peso mayor a las mujeres, 2) pero las mujeres tienen un mayor IMC así como una mayor cincunferencia de la cintura y 3) En promedio ambos grupos tienen 15 años.
+
+```{r}
+n1 <- nutricion_1 %>% 
+  select(target, talla) %>% 
+  group_by(target=target) %>% 
+  summarize(m=mean(talla, na.rm = TRUE))
+
+n2 <- nutricion_1 %>% 
+  select(target, edad) %>% 
+  group_by(target=target) %>% 
+  summarize(m=mean(edad, na.rm = TRUE))
+
+n3<- nutricion_1 %>% 
+  select(target, peso_kg) %>% 
+  group_by(target=target) %>% 
+  summarize(m=mean(peso_kg, na.rm = TRUE))
+
+n4 <- nutricion_1 %>% 
+  select(target, IMC) %>% 
+  group_by(target=target) %>% 
+  summarize(m=mean(IMC, na.rm = TRUE))
+
+n5 <- nutricion_1 %>% 
+  select(target, circun_cintura) %>% 
+  group_by(target=target) %>% 
+  summarize(m=mean(circun_cintura, na.rm = TRUE))
+
+n1
+n2
+n3 
+n4
+n5
+```
+
+Con respecto a la información de quienes sufren de diabetes o no tenemos lo siguiente: 1) En promedio quienes no tienen diabetes tienen una ligera mayor talla con respecto a quienes si tienen, 2) Ambos grupos tienen la misma edad, 15 años; 3) El promedio de quienes tienen diabetes es mayor por 8 kg de quienes no; 4) A raíz de esto, su IMC es mayor en 3.5 y 5) también su cintura es mayor por casi 7 unidades.
+
+*Mediana*
+
+
+```{r}
+o1 <- nutricion_1 %>% 
+  select(sexo, talla) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(m=median(talla, na.rm = TRUE))
+
+o2 <- nutricion_1 %>% 
+  select(sexo, edad) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(m=median(edad, na.rm = TRUE))
+
+o3<- nutricion_1 %>% 
+  select(sexo, peso_kg) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(m=median(peso_kg, na.rm = TRUE))
+
+o4 <- nutricion_1 %>% 
+  select(sexo, IMC) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(m=median(IMC, na.rm = TRUE))
+
+o5 <- nutricion_1 %>% 
+  select(sexo, circun_cintura) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(m=median(circun_cintura, na.rm = TRUE))
+
+o1 
+o2 
+o3 
+o4 
+o5  
+```
+
+Los resultados de la mediana indican lo siguiente: 1) Se tiene una tall mayor en los hombre que en las mujeres, 2) La edad es la misma en ambos sexos, 3) Los hombres tienen más peso en kg, 4) Las mujeres tienen mayor IMC y 5) tambipen tienen mayor circunferencia de cintura.
+
+```{r}
+p1 <- nutricion_1 %>% 
+  select(target, talla) %>% 
+  group_by(target=target) %>% 
+  summarize(m=median(talla, na.rm = TRUE))
+
+p2 <- nutricion_1 %>% 
+  select(target, edad) %>% 
+  group_by(target=target) %>% 
+  summarize(m=median(edad, na.rm = TRUE))
+
+p3<- nutricion_1 %>% 
+  select(target, peso_kg) %>% 
+  group_by(target=target) %>% 
+  summarize(m=median(peso_kg, na.rm = TRUE))
+
+p4 <- nutricion_1 %>% 
+  select(target, IMC) %>% 
+  group_by(target=target) %>% 
+  summarize(m=median(IMC, na.rm = TRUE))
+
+p5 <- nutricion_1 %>% 
+  select(target, circun_cintura) %>% 
+  group_by(target=target) %>% 
+  summarize(m=median(circun_cintura, na.rm = TRUE))
+
+p1
+p2
+p3 
+p4
+p5
+```
+
+Los resultados con respecto a los individuos que tienen o no diabetes son: 1) Quienes no tienen, poseen una ligera mayor talla, 2) tienen la misma edad, 3) quienes tienen diabetes sufren de mayor peso, 4) también mayor IMC y 5) por ende, mayor cincunferencia de cintura. 
+
+*Moda*
+
+```{r}
+library(modeest)
+```
+
+```{r}
+q1 <- nutricion_1 %>% 
+  select(sexo, talla) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(mode=mlv(talla, na.rm = TRUE))
+
+q2 <- nutricion_1 %>% 
+  select(sexo, edad) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(mode=mlv(edad, na.rm = TRUE))
+
+q3<- nutricion_1 %>% 
+  select(sexo, peso_kg) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(mode=mlv(peso_kg, na.rm = TRUE))
+
+q4 <- nutricion_1 %>% 
+  select(sexo, IMC) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(mode=mlv(IMC, na.rm = TRUE))
+
+q5 <- nutricion_1 %>% 
+  select(sexo, circun_cintura) %>% 
+  group_by(sexo=sexo) %>% 
+  summarize(mode=mlv(circun_cintura, na.rm = TRUE))
+
+q1 
+q2 
+q3 
+q4 
+q5  
+```
+
+
+```{r}
+r1 <- nutricion_1 %>% 
+  select(target, talla) %>% 
+  group_by(target=target) %>% 
+  summarize(mode=mlv(talla, na.rm = TRUE))
+
+r2 <- nutricion_1 %>% 
+  select(target, edad) %>% 
+  group_by(target=target) %>% 
+  summarize(mode=mlv(edad, na.rm = TRUE))
+
+r3<- nutricion_1 %>% 
+  select(target, peso_kg) %>% 
+  group_by(target=target) %>% 
+  summarize(mode=mlv(peso_kg, na.rm = TRUE))
+
+r4 <- nutricion_1 %>% 
+  select(target, IMC) %>% 
+  group_by(target=target) %>% 
+  summarize(mode=mlv(IMC, na.rm = TRUE))
+
+r5 <- nutricion_1 %>% 
+  select(target, circun_cintura) %>% 
+  group_by(target=target) %>% 
+  summarize(mode=mlv(circun_cintura, na.rm = TRUE))
+
+r1
+r2
+r3 
+r4
+r5
+```
+
+Para la moda, tenemos conclusiones similares a las anteriores en ambos casos.
+
+
+##### Medidas de dispersión variables cuantitativas
+
+```{r}
+head(nutricion_1, 2)
+```
+*Cuartiles*
+
+```{r}
+# creamos una funci?n 
+cuartiles<-function(x){ 
+  min <- min(x)
+  max <- max(x)
+  Q1 <- quantile(x,.25)
+  Q2 <- quantile(x,.50)
+  Q3 <- quantile(x,.75)
+  return (c(min, Q1, Q2, Q3, max))
+}
+
+apply(nutricion_1[,c(4,5,6, 7,8)],2,FUN=cuartiles)
+```
+
+*Varianza*
+
+```{r}
+varianza<-function(x){ 
+  
+  return (round(var(x),2))
+}
+
+apply(nutricion_1[,c(4,5,6, 7,8)],2,FUN=varianza)
+```
+
+*Desviación estándar*
+
+```{r}
+desv_est<-function(x){ 
+  
+  return (round(sd(x),2))
+}
+
+apply(nutricion_1[,c(4,5,6, 7,8)],2,FUN=desv_est)
+```
+
+##### Medidas de dispersión variables cualitativas
+
+*Cuartiles*
+
+Los cuartiles con respecto al sexo de los individuos son los siguientes: 1) Con respecto a la variable talla, para las mujeres, ordenando los datos de menor a mayor, el 25% de la distribución corta con una talla de 151.75, el 50% de la distribución con una 155.5 y el 75% con una de 158.78. La talla más pequeña fue de 141.5 y la más grande fue de 173. 2) Para los hombres se tiene que, ordenando los datos de menor a mayor, el 25% de la distribución corta a una talla de 160.2, el 50% (o a la mitad de los datos totales) corta a 163.8 y el 75% corta en 168.7. La tallla mínima fue de 135.6 y la máxima de 188.6
+3) El resto de variables se interpreta de la misma forma.
+
+```{r warning=FALSE}
+# Cuartiles seg?n una variable cualitativa
+
+Q <- c("mínimo", "Q1", "Q2", "Q3", "máximo","mínimo",  "Q1", "Q2", "Q3", "máximo")
+# con dplyr
+s1 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, talla) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Cuartil = cuartiles(talla)) 
+
+s2 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, edad) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Cuartil = cuartiles(edad))
+
+s3 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, peso_kg) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Cuartil = cuartiles(peso_kg)) 
+
+s4 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, IMC) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Cuartil = cuartiles(IMC)) 
+
+s5 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, circun_cintura) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Cuartil = cuartiles(circun_cintura)) 
+
+
+s1$Q <- Q
+View(s1, "s1")
+
+s2$Q <- Q
+View(s2, "s2")
+
+s3$Q <- Q
+View(s3, "s3")
+
+s4$Q <- Q
+View(s4, "s4")
+
+s5$Q <- Q
+View(s5, "s5")
+
+```
+
+Los cuartiles con respecto a si tienen o no diabetes son los siguientes: 1) Con respecto a la variable IMC, para quienes no tienen diabetes, ordenando los datos de menor a mayor, el 25% de la distribución corta con un IMC de 19.9, el 50% de la distribución con una 21.62 y el 75% con una de 23.14. El IMC más pequeño fue de 14.54 y la más grande fue de 30.4. 2) Para los que tienen diabetes se tiene que, ordenando los datos de menor a mayor, el 25% de la distribución corta a un IMC de 23.16, el 50% (o a la mitad de los datos totales) corta a 24.75 y el 75% corta en 27.35. El IMC mínimo fue de 17.3 y la máxima de 36.71.
+3) El resto de variables se interpreta de la misma forma.
+
+```{r, warning=FALSE}
+
+t1 <- nutricion_1 %>%    # operador "pipe"
+  select(target, talla) %>% 
+  group_by(target = target) %>% 
+  summarize(Cuartil = cuartiles(talla)) 
+
+t2 <- nutricion_1 %>%    # operador "pipe"
+  select(target, edad) %>% 
+  group_by(target = target) %>% 
+  summarize(Cuartil = cuartiles(edad))
+
+t3 <- nutricion_1 %>%    # operador "pipe"
+  select(target, peso_kg) %>% 
+  group_by(target = target) %>% 
+  summarize(Cuartil = cuartiles(peso_kg)) 
+
+t4 <- nutricion_1 %>%    # operador "pipe"
+  select(target, IMC) %>% 
+  group_by(target = target) %>% 
+  summarize(Cuartil = cuartiles(IMC)) 
+
+t5 <- nutricion_1 %>%    # operador "pipe"
+  select(target, circun_cintura) %>% 
+  group_by(target = target) %>% 
+  summarize(Cuartil = cuartiles(circun_cintura)) 
+
+t1$Q <- Q
+View(t1, "t1")
+
+t2$Q <- Q
+View(t2, "t2")
+
+t3$Q <- Q
+View(t3, "t3")
+
+t4$Q <- Q
+View(t4, "t4")
+
+t5$Q <- Q
+View(t5, "t5")
+
+```
+
+*Varianza*
+
+```{r}
+
+u1 <- nutricion_1 %>%    # operador "pipe"
+  select(target, talla) %>% 
+  group_by(target = target) %>% 
+  summarize(Var = varianza(talla)) 
+
+u2 <- nutricion_1 %>%    # operador "pipe"
+  select(target, edad) %>% 
+  group_by(target = target) %>% 
+  summarize(Var = varianza(edad))
+
+u3 <- nutricion_1 %>%    # operador "pipe"
+  select(target, peso_kg) %>% 
+  group_by(target = target) %>% 
+  summarize(Var = varianza(peso_kg)) 
+
+u4 <- nutricion_1 %>%    # operador "pipe"
+  select(target, IMC) %>% 
+  group_by(target = target) %>% 
+  summarize(Var = varianza(IMC)) 
+
+u5 <- nutricion_1 %>%    # operador "pipe"
+  select(target, circun_cintura) %>% 
+  group_by(target = target) %>% 
+  summarize(Var = varianza(circun_cintura)) 
+
+View(u1, "u1")
+
+View(u2, "u2")
+
+View(u3, "u3")
+
+View(u4, "u4")
+
+View(u5, "u5")
+
+```
+
+```{r}
+v1 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, talla) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Var = varianza(talla)) 
+
+v2 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, edad) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Var = varianza(edad))
+
+v3 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, peso_kg) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Var = varianza(peso_kg)) 
+
+v4 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, IMC) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Var = varianza(IMC)) 
+
+v5 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, circun_cintura) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Var = varianza(circun_cintura)) 
+
+View(v1, "v1")
+
+View(v2, "v2")
+
+View(v3, "v3")
+
+View(v4, "v4")
+
+View(v5, "v5")
+
+```
+
+*Desviación estándar*
+
+Las principales conclusiones sobre la variabilidad de los datos con respecto a la media de aquellas personas que sufren o no de diabetes son las siguientes: 1) Con respecto a la talla, el peso, IMC y circunferencia de la cintura, las personas con diabetes tienen mayor variabilidad con respecto a quienes no tienen diabetes, 2) Con respecto a la edad el grupo de personas que no tienene diabetes tienen una mayor varibilidad de quienes si tienen diabetes y 3) La interpretación de la desviación estándar de cada variables es: el peso del grupo con diabetes presenta una variabilidad de 9.6 kg, por debajo o por encima, del peso promedio del grupo, y así para cada una de las variables.
+
+```{r}
+
+w1 <- nutricion_1 %>%    # operador "pipe"
+  select(target, talla) %>% 
+  group_by(target = target) %>% 
+  summarize(Stde=sd(talla)) 
+
+w2 <- nutricion_1 %>%    # operador "pipe"
+  select(target, edad) %>% 
+  group_by(target = target) %>% 
+  summarize(Stde=sd(edad))
+
+w3 <- nutricion_1 %>%    # operador "pipe"
+  select(target, peso_kg) %>% 
+  group_by(target = target) %>% 
+  summarize(Stde=sd(peso_kg)) 
+
+w4 <- nutricion_1 %>%    # operador "pipe"
+  select(target, IMC) %>% 
+  group_by(target = target) %>% 
+  summarize(Stde=sd(IMC)) 
+
+w5 <- nutricion_1 %>%    # operador "pipe"
+  select(target, circun_cintura) %>% 
+  group_by(target = target) %>% 
+  summarize(Stde=sd(circun_cintura)) 
+
+View(w1, "w1")
+
+View(w2, "w2")
+
+View(w3, "w3")
+
+View(w4, "w4")
+
+View(w5, "w5")
+
+```
+
+Las principales conclusiones sobre la variabilidad de los datos con respecto al sexo de los individuos son las siguientes: 1) Con respecto a la talla, el peso, IMC y circunferencia de la cintura, las personas con diabetes tienen mayor variabilidad con respecto a quienes no tienen diabetes, 2) Con respecto a la edad el grupo de personas que no tienene diabetes tienen una mayor varibilidad de quienes si tienen diabetes y 3) La interpretación de la desviación estándar de cada variables es: el peso del grupo con diabetes presenta una variabilidad de 9.6 kg, por debajo o por encima, del peso promedio del grupo, y así para cada una de las variables.
+
+```{r}
+y1 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, talla) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Stde=sd(talla)) 
+
+y2 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, edad) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Stde=sd(edad))
+
+y3 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, peso_kg) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Stde=sd(peso_kg)) 
+
+y4 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, IMC) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Stde=sd(IMC)) 
+
+y5 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, circun_cintura) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(Stde=sd(circun_cintura)) 
+
+View(y1, "y1")
+
+View(y2, "y2")
+
+View(y3, "y3")
+
+View(y4, "y4")
+
+View(y5, "y5")
+
+```
+
+
+##### Medidas de Curtosis de variables cuantitativas y cualitativas
+
+*Curtosis*
+
+
+
+```{r}
+library(e1071)                     
+           
+# creamos una función 
+curtosis <- function(x){
+
+    return(kurtosis(x))
+}
+
+```
+
+La interpretación del coeficiente de curtosis se hace de la siguiente manera:
+
++ Si el coeficiente de curtosis es positivo, la distribución es leptocúrtica.
+
++ Si el coeficiente de curtosis es igual a cero, la distribución es mesocúrtica.
+
++ Si el coeficiente de curtosis es negativo, la distribución es platicúrtica.
+
+Los resultados sobre las variables cuantitativas sugieren lo siguiente: 1) Todas las variables tienen una distribución leptocúrtica, es decir, una gran cantidad de datos se concentra en la media.
+
+```{r}
+# Variables cuantitativas
+apply(nutricion_1[,c(4,5,6, 7,8)],2,FUN=curtosis)
+```
+
+Sobre el primer grupo de variables cualitativa de Target, si tiene o no obesidad los individuos, tenemos que para las variables peso, IMC y circunferencia de cintura unadistribución leptocúrtica de los datos, esto para ambos grupos (obesidad o no), mientras que las variables talla solo para el caso de quienes tienen obesidad es leptocúrtica, caso contrario la variable edad. La distribución platicúrtica la poseen los que no tienen diabetes de la variable talla y en la variable edad para quienes si tienen obesidad.
+
+```{r}
+# Variables cualitativas TARGET
+
+a1 <- nutricion_1 %>%    # operador "pipe"
+  select(target, talla) %>% 
+  group_by(target = target) %>% 
+  summarize(kur=curtosis(talla)) 
+
+a2 <- nutricion_1 %>%    # operador "pipe"
+  select(target, edad) %>% 
+  group_by(target = target) %>% 
+  summarize(kur=curtosis(edad))
+
+a3 <- nutricion_1 %>%    # operador "pipe"
+  select(target, peso_kg) %>% 
+  group_by(target = target) %>% 
+  summarize(kur=curtosis(peso_kg)) 
+
+a4 <- nutricion_1 %>%    # operador "pipe"
+  select(target, IMC) %>% 
+  group_by(target = target) %>% 
+  summarize(kur=curtosis(IMC)) 
+
+a5 <- nutricion_1 %>%    # operador "pipe"
+  select(target, circun_cintura) %>% 
+  group_by(target = target) %>% 
+  summarize(kur=curtosis(circun_cintura)) 
+
+View(a1, "a1")
+
+View(a2, "a2")
+
+View(a3, "a3")
+
+View(a4, "a4")
+
+View(a5, "a5")
+
+```
+
+Para el caso de la variable de clasificación de sexo tenemos que: todas las variables, a exepción de los hombres en la edad que tienen una distribución platicúrtica, tienen una distribución leptpcúrtica.
+
+```{r}
+# Variables cualitativas SEXO
+
+b1 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, talla) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(kur=curtosis(talla)) 
+
+b2 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, edad) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(kur=curtosis(edad))
+
+b3 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, peso_kg) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(kur=curtosis(peso_kg)) 
+
+b4 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, IMC) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(kur=curtosis(IMC)) 
+
+b5 <- nutricion_1 %>%    # operador "pipe"
+  select(sexo, circun_cintura) %>% 
+  group_by(sexo = sexo) %>% 
+  summarize(kur=curtosis(circun_cintura)) 
+
+View(b1, "b1")
+
+View(b2, "b2")
+
+View(b3, "b3")
+
+View(b4, "b4")
+
+View(b5, "b5")
+
+```
+
+
+```{r}
+# Ejemplo gráfico
+
+hist(nutricion_1$peso_kg, main = "Segundo Momento", xlab = "Peso_kg",col = "lightblue")
+
+```
+
+
+
+##### Correlación de Pearson y Spearman de variables cuantitativas
+
+Para visualizar la correlación, utilizaremos las variables: Edad vs IMC, cincunferencia cintura vs IMC.
+
+```{r}
+library(mlr)
+```
+
+```{r}
+plot(nutricion_1$circun_cintura,nutricion_1$IMC,
+     main = "Gráfico N° 01: Gráfico de puntos", 
+     xlab = "Circunferencia de la cintura",
+     ylab = "IMC",
+     col = "blue")
+abline(lm(IMC ~ circun_cintura, data=nutricion_1), col = "red", lwd = 3) # a?adimos la l?nea de regresi?n
+text(paste("Correlación pearson:", round(cor(nutricion_1$circun_cintura, nutricion_1$IMC, method = 'pearson'), 3)), x = 35, y = 180) # mostramos la Correlaci?n de Pearson
+
+cor.test(nutricion_1$circun_cintura, nutricion_1$IMC, method = 'pearson') 
+
+```
+
+```{r}
+plot(nutricion_1$circun_cintura,nutricion_1$IMC,
+     main = "Gráfico N° 01: Gráfico de puntos", 
+     xlab = "Circunferencia de la cintura",
+     ylab = "IMC",
+     col = "#4271AE")
+text(paste("Correlación de Rho Spearman:", round(cor(nutricion_1$circun_cintura, nutricion_1$IMC, method = 'spearman'), 3)), x = 35, y = 180) 
+
+
+cor.test(nutricion_1$circun_cintura,nutricion_1$IMC, method = 'spearman')        
+```
+
+Los resultados de ambas correlaciones muestran que: La correlacion entre el IMC y la circunferencia de la cintura es alta, para la pearson es de 0.78 con más de 5% de significancia, la soearman tiene un poco menos, 0.73, pero aún así es grande y también es significativa. 
+
+##### Pruebas de normalidad de las variables
+
+PLANTEAMIENTO DE LAS HIPOTESIS
+
+Ho: Los datos estan normalmente distribuidos      
+Ha: Los datos no estan normalmente distribuidos
+
+Nivel de significancia = 5% (0.05)
+
+```{r}
+# Test: Kolmogorov-Smirnov "para la prueba de normalidad, n>50 casos"
+library(nortest)
+```
+
+```{r}
+lillie.test(nutricion_1$talla)$p.value
+lillie.test(nutricion_1$peso_kg)$p.value
+lillie.test(nutricion_1$circun_cuello)$p.value
+lillie.test(nutricion_1$IMC)$p.value
+lillie.test(nutricion_1$circun_cintura)$p.value
+lillie.test(nutricion_1$cadera)$p.value
+lillie.test(nutricion_1$ind_cintura_cadera)$p.value
+lillie.test(nutricion_1$ind_cintura_estatura)$p.value
+lillie.test(nutricion_1$por_grasa_corporal)$p.value
+lillie.test(nutricion_1$masa_corporal_magra_kg)$p.value
+lillie.test(nutricion_1$pliegue_cutaneo_BICEPS)$p.value
+lillie.test(nutricion_1$pliegue_cutaneo_TRICEPS)$p.value
+lillie.test(nutricion_1$pliegue_cutaneo_ESCAPULAR)$p.value
+lillie.test(nutricion_1$pliegue_cutaneo_SUPRAILIACO)$p.value
+
+```
+
+```{r}
+qqnorm(nutricion_1$peso_kg, 
+       main = "Gráfico de la normalidad de la variable Peso")
+qqline(nutricion_1$peso_kg, col = 2)
+```
+
+En todos los casos, la hipótesis de normalidad de rechaza al 5% de significancia. Lo más seguro es que outliers dentro de nuestras variables afecten su resultado de normalidad. Por lo que normalizaremos las variables de estudio.
+
+```{r}
+# Normalizar variables
+nutricion_1$talla_rnorm <- rnorm(nutricion_1$talla)
+lillie.test(nutricion_1$talla_rnorm)$p.value
+str(nutricion_1$talla_rnorm)
+
+nutricion_1$peso_rnorm <- rnorm(nutricion_1$peso_kg)
+nutricion_1$circuell_rnorm <- rnorm(nutricion_1$circun_cuello)
+nutricion_1$IMC_rnorm <- rnorm(nutricion_1$IMC)
+nutricion_1$circint_rnorm <- rnorm(nutricion_1$circun_cintura)
+nutricion_1$cadera_rnorm <- rnorm(nutricion_1$cadera)
+nutricion_1$indcintcadera_rnorm <- rnorm(nutricion_1$ind_cintura_cadera)
+nutricion_1$indcintestat_rnorm <- rnorm(nutricion_1$ind_cintura_estatura)
+nutricion_1$porgrascorp_rnorm <- rnorm(nutricion_1$por_grasa_corporal)
+nutricion_1$masacorp_rnorm <- rnorm(nutricion_1$masa_corporal_magra_kg)
+nutricion_1$pliegcutbicep_rnorm <- rnorm(nutricion_1$pliegue_cutaneo_BICEPS)
+nutricion_1$pliegcuttricep_rnorm <- rnorm(nutricion_1$pliegue_cutaneo_TRICEPS)
+nutricion_1$pliegnutescapular_rnorm <- rnorm(nutricion_1$pliegue_cutaneo_ESCAPULAR)
+nutricion_1$pliegnutsuprail_rnorm <- rnorm(nutricion_1$pliegue_cutaneo_SUPRAILIACO)
+
+```
+
+
+##### Análisis de dependencia
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(corrplot)
+library(readxl)
+library(gplots)
+library(ParamHelpers)
+library(mlr)
+library(car)
+library(VIM)
+library(dplyr)
+library(stats)
+library(dummy)
+library(skimr)
+library(DataExplorer)
+library(pROC) 
+library(ROCR)
+```
+
+
+
+*Información descriptiva de las columnas*
+
+```{r}
+skim(nutricion_1)
+```
+
+```{r}
+# Histograma de todas las variables
+plot_histogram(nutricion_1)
+
+```
+
+
+*Variables dummy*
+
+Para poder trabajar, pondremos a disposición la variable target y sexo como dummy.
+
+```{r}
+dummy_sexo <- dummy(nutricion_1[, 3]) # index
+#dummy_target <- dummy(nutricion_1[, 23]) # index
+
+View(dummy_sexo)
+```
+
+
+*Regresión logística*
+
+
+```{r}
+str(nutricion_1)
+```
+
+
+```{r}
+corrplot(cor(nutricion_1[, c(-1,-2,-3,-11,-12,-13,-14,-15,-16,-17,-18,-19,-20,-21,-22)]), method = "number") 
+```
+
+```{r}
+library(GGally)
+```
+
+
+```{r}
+ggpairs(autos_log, aes(colour=Desplazamiento_Alto))
+
+```
+
+lillie.test(nutricion_1$talla)$p.value
+lillie.test(nutricion_1$peso_kg)$p.value
+lillie.test(nutricion_1$circun_cuello)$p.value
+lillie.test(nutricion_1$IMC)$p.value
+lillie.test(nutricion_1$circun_cintura)$p.value
+lillie.test(nutricion_1$cadera)$p.value
+
+--------  Datos para Regresión Logística
+```{r}
+nutricion_logis <- bind_cols(nutricion_1[,c("target","talla","peso_kg","circun_cuello",
+                                "IMC","circun_cintura","cadera")],
+                       dummy_sexo[, -2])
+
+save(nutricion_logis, file = "nutricion_logis.Rdata") # Guardamos
+load("nutricion_logis.Rdata") #abrimos
+
+View(nutricion_logis)
+```
+```{r}
+str(nutricion_logis)
+```
+
+Cambiamos el nombre de la columna: ...7
+
+```{r}
+colnames(nutricion_logis)[colnames(nutricion_logis)=="...8"] <- "sexo"
+
+str(nutricion_logis)
+```
+
+
+```{r}
+# con pROC
+# La variable independiente ingresa como num?rico
+ROC1 <- roc(nutricion_logis$target
+            ~as.numeric(nutricion_logis$sexo))
+  #          +nutricion_logis$IMC
+   #         +nutricion_logis$cadera
+    #        +nutricion_logis$talla)
+
+print("Nivel predictibilidad de esta variable independiente sobre la variable dependiente es: ")
+print(ROC1)
+print("Intervalo de confianza de la curva ROC")
+print(ci.auc(ROC1))
+#plot(ROC1)
+# Observamos esta variable puede predecir a la variable dependiente
+```
+
+```{r}
+# con pROC
+# La variable independiente ingresa como num?rico
+ROC1 <- roc(nutricion_logis$target
+            ~nutricion_logis$talla)
+  #          +nutricion_logis$IMC
+   #         +nutricion_logis$cadera
+    #        +nutricion_logis$talla)
+
+print("Nivel predictibilidad de esta variable independiente sobre la variable dependiente es: ")
+print(ROC1)
+print("Intervalo de confianza de la curva ROC")
+print(ci.auc(ROC1))
+#plot(ROC1)
+# Observamos esta variable puede predecir a la variable dependiente
+```
+
+```{r}
+# con pROC
+# La variable independiente ingresa como num?rico
+ROC1 <- roc(nutricion_logis$target
+            ~nutricion_logis$IMC)
+  #          +nutricion_logis$IMC
+   #         +nutricion_logis$cadera
+    #        +nutricion_logis$talla)
+
+print("Nivel predictibilidad de esta variable independiente sobre la variable dependiente es: ")
+print(ROC1)
+print("Intervalo de confianza de la curva ROC")
+print(ci.auc(ROC1))
+#plot(ROC1)
+# Observamos esta variable puede predecir a la variable dependiente
+```
+
+```{r}
+# con pROC
+# La variable independiente ingresa como num?rico
+ROC1 <- roc(nutricion_logis$target
+            ~nutricion_logis$cadera)
+  #          +nutricion_logis$IMC
+   #         +nutricion_logis$cadera
+    #        +nutricion_logis$talla)
+
+print("Nivel predictibilidad de esta variable independiente sobre la variable dependiente es: ")
+print(ROC1)
+print("Intervalo de confianza de la curva ROC")
+print(ci.auc(ROC1))
+#plot(ROC1)
+# Observamos esta variable puede predecir a la variable dependiente
+```
+
+Las variables con mejor predictibilidad es el IMC y la cadera, ya que tienen un AUC cercano o mayor a 0.8.
+
+Ahora obtenemos la regresión logística.
+
+```{r}
+
+nutricion_logis <- nutricion_logis %>%
+  mutate_all(as.numeric)
+
+#table(autos_log$Desplazamiento_Alto)
+
+#str(nutricion_logis)
+
+# CORRIGIENDO DATA
+
+#autos_log$Desplazamiento_Alto=ifelse(autos_log$Desplazamiento_Alto == 2,
+#                               0,1)
+                           
+modelo1 <- glm(target~., data = nutricion_logis, family="binomial")
+summary(modelo1)
+```
+Ahora como vemos, solo usaremos el IMC.
+
+```{r}
+modelo1 <- glm(target~ IMC, data = nutricion_logis, family="binomial")
+summary(modelo1)
+```
+
+La interpretación del coeficiente es la siguiente: Cuando el IMC incrementa la probabilidad de tener obesidad incrementa. Este coeficiente es significativo a un 99% de confianza.
+
+Calculamos el nivel de ajuste del modelo "R2 Ajustado""
+```{r}
+install.packages("DescTools")
+```
+
+```{r}
+#library(DescToolsAddIns)
+
+#PseudoR2(modelo1, c("McFadden", "Nagel"))
+# McFaden indica que el 75.8% de la variable dependiente es explicada por las variables independientes del modelo.
+
+#calculate McFadden's R-squared for model
+with(summary(modelo1), 1 - deviance/null.deviance)
+```
+
+```{r}
+#install and load pscl package
+install.packages('pscl')
+library(pscl)
+```
+
+
+```{r}
+#calculate McFadden's R-squared for model
+pR2(modelo1)['McFadden']
+```
+
+Como observamos, la Mcfadden es muy bajo, solo el 21% de los casos son predichos, ya que tenemos pocas variables que resulten útiles.
+
+Test de Hosmer Lemeshow
+Ho: El modelo es capaz de predecir los datos (Observados = Predichos)
+Ha: El modelo no es capaz de predecir los datos (Observados <> Predichos) 
+
+```{r}
+library(ResourceSelection)
+
+hoslem.test(modelo1$y, fitted(modelo1))
+
+# Siendo que p-value > 0.05; no hay evidiencia para rechazar la Ho.
+```
+
+##### Análisis de clúster
+
+```{r}
+#update.packages(ask = FALSE)
+```
+
+
+```{r}
+#library("easypackages") # instalamos y cargamos los paquetes
+library("tidyverse")
+library("ggplot2")
+library("ggcorrplot")
+library("dplyr")
+library("readxl")  
+library("FactoMineR")
+library("corrplot") 
+#library("GGally")
+library("factoextra")
+library("Hmisc")
+library("PerformanceAnalytics")
+library("car")
+library("cluster")
+library("NbClust")
+library("tidyr")
+```
+
+```{r}
+nutricion_1$sexo <- replace(nutricion_1$sexo, nutricion_1$sexo=="M",1 )
+nutricion_1$sexo <- replace(nutricion_1$sexo, nutricion_1$sexo=="F",0 )
+
+head(nutricion_1,3)
+```
+
+```{r}
+table(nutricion_1$clasif_diagnos_talla_edad)
+```
+
+```{r}
+nutricion_1$clasif_diagnos_talla_edad <- replace(nutricion_1$clasif_diagnos_talla_edad, 
+                                                 nutricion_1$clasif_diagnos_talla_edad=="RIESGO DE TALLA BAJA",1 )
+
+nutricion_1$clasif_diagnos_talla_edad <- replace(nutricion_1$clasif_diagnos_talla_edad, 
+                                                 nutricion_1$clasif_diagnos_talla_edad=="TALLA BAJA",2 )
+
+nutricion_1$clasif_diagnos_talla_edad <- replace(nutricion_1$clasif_diagnos_talla_edad, 
+                                                 nutricion_1$clasif_diagnos_talla_edad=="TALLA BAJA SEVERA",3 )
+
+nutricion_1$clasif_diagnos_talla_edad <- replace(nutricion_1$clasif_diagnos_talla_edad, 
+                                                 nutricion_1$clasif_diagnos_talla_edad=="TALLA NORMAL",4 )
+
+```
+
+```{r}
+table(nutricion_1$clasif_diagnos_IMC)
+```
+
+```{r}
+nutricion_1$clasif_diagnos_IMC <- replace(nutricion_1$clasif_diagnos_IMC, 
+                                          nutricion_1$clasif_diagnos_IMC=="DELGADEZ",1 )
+nutricion_1$clasif_diagnos_IMC <- replace(nutricion_1$clasif_diagnos_IMC, 
+                                          nutricion_1$clasif_diagnos_IMC=="NORMAL",2 )
+nutricion_1$clasif_diagnos_IMC <- replace(nutricion_1$clasif_diagnos_IMC, 
+                                          nutricion_1$clasif_diagnos_IMC=="OBESIDAD",3 )
+nutricion_1$clasif_diagnos_IMC <- replace(nutricion_1$clasif_diagnos_IMC, 
+                                          nutricion_1$clasif_diagnos_IMC=="RIESGO DE BAJO PESO",4 )
+nutricion_1$clasif_diagnos_IMC <- replace(nutricion_1$clasif_diagnos_IMC, 
+                                          nutricion_1$clasif_diagnos_IMC=="SOBREPESO",5 )
+```
+
+```{r}
+table(nutricion_1$clasif_perimetro_abdominal)
+```
+
+```{r}
+nutricion_1$clasif_perimetro_abdominal <- replace(nutricion_1$clasif_perimetro_abdominal,
+                                                  nutricion_1$clasif_perimetro_abdominal=="ALTO RIESGO",1 )
+nutricion_1$clasif_perimetro_abdominal <- replace(nutricion_1$clasif_perimetro_abdominal,
+                                                  nutricion_1$clasif_perimetro_abdominal=="BAJO RIESGO",2 )
+```
+
+```{r}
+table(nutricion_1$clasif_anemia)
+```
+
+```{r}
+nutricion_1$clasif_anemia <- replace(nutricion_1$clasif_anemia,
+                                                  nutricion_1$clasif_anemia=="ANEMIA LEVE",1 )
+nutricion_1$clasif_anemia <- replace(nutricion_1$clasif_anemia,
+                                                  nutricion_1$clasif_anemia=="ANEMIA MODERADA",2 )
+nutricion_1$clasif_anemia <- replace(nutricion_1$clasif_anemia,
+                                                  nutricion_1$clasif_anemia=="NO PRESENTA ANEMIA",3 )
+nutricion_1$clasif_anemia <- replace(nutricion_1$clasif_anemia,
+                                                  nutricion_1$clasif_anemia=="VALORES INCORRECTOS",4 )
+
+```
+
+
+```{r}
+
+dnutricion <- nutricion_1[,-1,-2]  
+d2nutricion <- dnutricion[,-1]
+
+
+d2nutricion <- d2nutricion %>%
+  mutate_all(as.numeric)
+
+head(d2nutricion, 6)
+
+#d2nutricion <- dnutricion[,-1]
+#View(dnutricion)
+#head(data_nutricion) # data original
+```
+
+*Normalizamos las variables*
+
+```{r}
+d3nutricion <- scale(d2nutricion[,c(-1,-17,-18,-19,-20,-21)])
+View(d3nutricion)
+```
+
+*Calular las distancias*
+
+```{r}
+
+Distancias <- get_dist(d3nutricion, method = "euclidean") 
+
+fviz_dist(Distancias, gradient = list(low = "blue", mid = "white", high = "red"))
+
+# Como son bastantes casos, el gr?fico no se aprecia mucho; con pocos caso se ve mejor
+```
+
+*Número de clusters*
+
+Vamos a estimar el numero de clusters idoneo: Elbow
+```{r}
+
+fviz_nbclust(d3nutricion, kmeans, method = "wss")
+
+```
+
+```{r}
+fviz_nbclust(d3nutricion, kmeans, method = "silhouette")
+
+```
+
+```{r}
+
+fviz_nbclust(d3nutricion, kmeans, method = "gap_stat")
+
+```
+
+EN este caso, para hacer más parsimonioso el modelo seleccionamos 3.
+
+*Clasificación jerárquica*
+
+```{r}
+
+CJerarquico <- hcut(d3nutricion, k = 3, stand = TRUE) #k = 2 a m?s
+fviz_dend(CJerarquico, rect = TRUE, cex = 0.5,
+          k_colors = c("red","blue","green"))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
